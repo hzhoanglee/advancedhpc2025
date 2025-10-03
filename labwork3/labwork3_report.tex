@@ -1,0 +1,211 @@
+\documentclass[12pt,a4paper]{cibb}
+% Fallback definition for missing \@ordinalM
+\makeatletter
+\providecommand{\@ordinalM}[2]{#1}
+\makeatother
+\usepackage{subfigure,graphicx}
+\usepackage{amsmath,amsfonts,latexsym,amssymb,euscript,xr}
+\usepackage{booktabs}
+\usepackage[nodayofweek]{datetime}
+\usepackage{hyperref}
+\usepackage{fmtcount}
+\usepackage[english]{datenumber}
+\usepackage[absolute]{textpos}
+\usepackage{listings}
+\usepackage[table]{xcolor}
+\usepackage{color,colortbl,tabularx}
+\usepackage[english]{babel}
+\usepackage[protrusion=true,expansion=true]{microtype}
+\usepackage{amsmath,amsfonts,amsthm}
+% \usepackage[pdftex]{graphicx}
+\usepackage{pifont}
+\def\red{\color{red}}
+\def\black{\color{black}}
+\def\blue{\color{blue}}
+\def\magenta{\color{magenta}}
+\definecolor{LightBlue}{rgb}{0.88,0.9,0.9}
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\usepackage{titlesec}
+\usepackage{xurl}
+\usepackage{float}
+
+
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+% Configure listings for better code visibility
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    commentstyle=\color{codegreen},
+    escapeinside={\%*}{*)},
+    keywordstyle=\color{blue},
+    stringstyle=\color{codepurple},
+    numbers=none,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{black!30},
+    xleftmargin=10pt,
+    xrightmargin=10pt,
+    framexleftmargin=5pt,
+    framexrightmargin=5pt
+}
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+\title{\Large $\ $\\ \bf Greyscale - Labwork 3}
+\author{\large Le Minh Hoang - 2440051}
+% \address{\footnotesize $\ $\\$^1$ First author's department, institute,
+% city, country. \\
+% %
+% $^2$ Second author's department, institute,
+% city, country. \\
+% %
+% $^3$ Third author's primary affiliation department, institute,
+% city, country.  \\
+% %
+% $^4$ Third author's secondary affiliation department, institute,
+% city, country. \\
+%
+\bigskip
+% ORCID codes: FA 0000-0000-0000-0000; SA 0000-0000-0000-0000; TA 0000-0000-0000-0000.
+\bigskip
+% \newline
+% $^*$corresponding author: email@email.com
+% }
+\abstract{
+\\[17pt]
+{\bf Abstract.} 
+No abstract for the labwork 3, I guess.
+}
+\begin{document}
+\renewcommand{\thefootnote}{}
+\footnotetext{\small{Article version: \today $\;$ \currenttime  $\;$ CET}}
+\thispagestyle{myheadings}
+\pagestyle{myheadings}
+\markright{\tt Advanced programming for HPC 2025}
+\section{Introduction}
+\label{sec:SCIENTIFIC-BACKGROUND}
+This report states the work completed in Labwork 3, which will attempt to convert an image to greyscale with both CPU and GPU via CUDA.
+
+% This report consists of the following sections:
+% \begin{itemize}
+%     \item GPU device name
+%     \item Multiprocessor core count
+%     \item Memory configuration
+% \end{itemize}
+
+\section{Implementation}
+\subsection{Image preprocessing}
+The image is flattened into a 1D array containing all RGB values sequentially
+\begin{lstlisting}
+img = matplotlib.pyplot.imread('img.jpeg')
+height, width, channels = img.shape
+rgb_1d = img.reshape(height * width * 3)
+\end{lstlisting}
+\subsection{CPU implementation}
+The CPU implementation uses NumPy array operations to convert the image into grayscale using the standard luminosity formula:
+\begin{lstlisting}
+rgb_2d = rgb_1d.reshape(height, width, 3)
+gray_2d = 0.299 * rgb_2d[:, :, 0] + 0.587 * rgb_2d[:, :, 1] + 0.114 * rgb_2d[:, :, 2]
+\end{lstlisting}
+\subsection{GPU implementation}
+This attempt of GPU implementation will be based on these following details
+\begin{itemize}
+    \item Each CUDA thread will process one pixel (all R,G,B value)
+    \item Thread indexing use \verb|threadIdx.x| and \verb|blockIdx.x| to create a unique global thread ID
+    \item Boundary check to prevent it go out of the limit
+    \item (R+G+B)/3 is used instead of weighted luminosity
+\end{itemize}
+\begin{lstlisting}
+@cuda.jit
+def grayscale(src, dst):
+    tidx = cuda.threadIdx.x + cuda.blockIdx.x * cuda.blockDim.x
+    pixel_idx = tidx * 3
+    
+    if pixel_idx + 2 < src.shape[0]:
+        g = np.uint8((src[pixel_idx] + src[pixel_idx + 1] + src[pixel_idx + 2]) / 3)
+        dst[pixel_idx] = g
+        dst[pixel_idx + 1] = g
+        dst[pixel_idx + 2] = g
+\end{lstlisting}
+
+
+\subsection{Memory management}
+No idea, just copy from the slide, but I understand the concept
+\begin{itemize}
+    \item Copy data from GPU --> CPU
+    \item Allocate memory on GPU based on the size
+    \item Do the calculation
+    \item Block the CPU by waiting until the GPU finish
+    \item Copy results from GPU to CPU
+\end{itemize}
+\begin{lstlisting}
+devSrc = cuda.to_device(rgb_1d)
+devDst = cuda.device_array(height * width * 3, np.uint8)
+grayscale[gridSize, blockSize](devSrc, devDst)
+cuda.synchronize()
+hostDst = devDst.copy_to_host()
+\end{lstlisting}
+
+\subsection{Modify the Blocksize}
+Just the above but changes the blockSize value and plot the result
+
+
+
+\section{Results and Analysis}
+\label{sec:CONCLUSIONS}
+
+\subsection{The CPU vs GPU}
+\begin{itemize}
+    \item CPU: 0.012 seconds
+    \item GPU Init Kernel (First run): 1.3491 seconds
+    \item GPU after kernel is ready: 0.000789 seconds
+\end{itemize}
+So, that's around 40x speedup
+
+\subsection{GPU CUDA with different blockSize}
+After changing the different blockSize variable, I achieved following result
+\begin{itemize}
+    \item Block Size: 32, GPU time: 0.0003666877746582031 seconds
+    \item Block Size: 64, GPU time: 0.0002963542938232422 seconds
+    \item Block Size: 128, GPU time: 0.0002751350402832031 seconds
+    \item Block Size: 256, GPU time: 0.00025725364685058594 seconds
+    \item Block Size: 512, GPU time: 0.00025177001953125 seconds
+    \item Block Size: 1024, GPU time: 0.0002713203430175781 seconds
+\end{itemize}
+That can be plotted as following graph
+\begin{figure}[H]
+\vspace{3mm}
+ \begin{center}
+ \includegraphics[width=0.9\textwidth]{images/626292a3-e7ad-4d9c-a947-c15e2d5e66e1.png}
+\caption{\textbf{GPU Algorithm Performance vs Block Size}.
+\label{fig:CIBB-LOGO}}
+ \end{center}
+\vspace{-8mm}
+\end{figure}
+\subsection{Conclusion}
+From what have been implemented and the result that I have achieved, I can conclude that:
+\begin{itemize}
+    \item The GPU is way faster than CPU when it come to the problems of multi-processing and parallel computation.
+    \item The kernel time on the first run is huge
+    \item Different blocksize can result in different run time, the bigger the blockSize, the better time. But it may cause to some issues related to memory when it is too big
+    
+\end{itemize}
+\begin{itemize}
+    \item 
+\end{itemize}
+\normalsize
+\end{document}

@@ -1,0 +1,173 @@
+\documentclass[12pt,a4paper]{cibb}
+% Fallback definition for missing \@ordinalM
+\makeatletter
+\providecommand{\@ordinalM}[2]{#1}
+\makeatother
+\usepackage{subfigure,graphicx}
+\usepackage{amsmath,amsfonts,latexsym,amssymb,euscript,xr}
+\usepackage{booktabs}
+\usepackage[nodayofweek]{datetime}
+\usepackage{hyperref}
+\usepackage{fmtcount}
+\usepackage[english]{datenumber}
+\usepackage[absolute]{textpos}
+\usepackage{listings}
+\usepackage[table]{xcolor}
+\usepackage{color,colortbl,tabularx}
+\usepackage[english]{babel}
+\usepackage[protrusion=true,expansion=true]{microtype}
+\usepackage{amsmath,amsfonts,amsthm}
+% \usepackage[pdftex]{graphicx}
+\usepackage{pifont}
+\def\red{\color{red}}
+\def\black{\color{black}}
+\def\blue{\color{blue}}
+\def\magenta{\color{magenta}}
+\definecolor{LightBlue}{rgb}{0.88,0.9,0.9}
+\definecolor{codegray}{rgb}{0.95,0.95,0.95}
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\usepackage{titlesec}
+\usepackage{xurl}
+
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection}{1em}{}
+
+% Configure listings for better code visibility
+\lstset{
+    backgroundcolor=\color{codegray},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    commentstyle=\color{codegreen},
+    escapeinside={\%*}{*)},
+    keywordstyle=\color{blue},
+    stringstyle=\color{codepurple},
+    numbers=none,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single,
+    rulecolor=\color{black!30},
+    xleftmargin=10pt,
+    xrightmargin=10pt,
+    framexleftmargin=5pt,
+    framexrightmargin=5pt
+}
+
+\newcommand\blfootnote[1]{%
+  \begingroup
+  \renewcommand\thefootnote{}\footnote{#1}%
+  \addtocounter{footnote}{-1}%
+  \endgroup
+}
+\title{\Large $\ $\\ \bf GPU Information Report - Labwork 2}
+\author{\large Le Minh Hoang}
+% \address{\footnotesize $\ $\\$^1$ First author's department, institute,
+% city, country. \\
+% %
+% $^2$ Second author's department, institute,
+% city, country. \\
+% %
+% $^3$ Third author's primary affiliation department, institute,
+% city, country.  \\
+% %
+% $^4$ Third author's secondary affiliation department, institute,
+% city, country. \\
+%
+\bigskip
+% ORCID codes: FA 0000-0000-0000-0000; SA 0000-0000-0000-0000; TA 0000-0000-0000-0000.
+\bigskip
+% \newline
+% $^*$corresponding author: email@email.com
+% }
+\abstract{
+\\[17pt]
+{\bf Abstract.} 
+No abstract for the labwork 2, I guess.
+}
+\begin{document}
+\renewcommand{\thefootnote}{}
+% \footnotetext{\small{Article version: \today $\;$ \currenttime  $\;$ CET}}
+\thispagestyle{myheadings}
+\pagestyle{myheadings}
+\markright{\tt Advanced programming for HPC}%check year
+\section{Introduction}
+\label{sec:SCIENTIFIC-BACKGROUND}
+This report states the work completed in Labwork 2, which focuses on GPU communication using Numba.
+
+This report consists of the following sections:
+\begin{itemize}
+    \item GPU device name
+    \item Multiprocessor core count
+    \item Memory configuration
+\end{itemize}
+
+\section{Results and Analysis}
+\label{sec:CONCLUSIONS}
+
+\subsection{GPU Device Information}
+The GPU information can be easily acquired using the \verb|cuda.detect()| function from Numba CUDA. The result are returned as following
+
+\begin{lstlisting}
+Found 1 CUDA devices
+id 0             b'Tesla T4'                              [SUPPORTED]
+                      Compute Capability: 7.5
+                           PCI Device ID: 4
+                              PCI Bus ID: 0
+                                    UUID: GPU-1376e51e-3a62-e0b5-df6b-acec1af4496f
+                                Watchdog: Disabled
+             FP32/FP64 Performance Ratio: 32
+Summary:
+	1/1 devices are supported
+\end{lstlisting}
+
+The detected device is a Tesla T4 GPU, which is the only one in free Google Colab sessions with plenty of runtime. This GPU features Compute Capability 7.5.
+
+\subsection{Multiprocessor Count}
+\subsubsection{MULTIPROCESSOR\_COUNT Attribute}
+The number of streaming multiprocessors (SMs) can be retrieved programmatically as shown below:
+
+\begin{lstlisting}[language=Python]
+device = cuda.get_current_device()
+multi_processor = getattr(device, 'MULTIPROCESSOR_COUNT')
+print(multi_processor)
+\end{lstlisting}
+
+Output:
+\begin{lstlisting}
+40
+\end{lstlisting}
+
+\subsubsection{Core count}
+The way of getting the core count according to a Stackoverflow thread \url{https://stackoverflow.com/questions/63823395/how-can-i-get-the-number-of-cuda-cores-in-my-gpu-using-python-and-numba}, we should get the \verb|device.compute_capability| first, and then search for the whole internet to get the number of cores per SM (Streaming Multiprocessor), and then multiply them together.
+\begin{lstlisting}
+compute_cap = device.compute_capability
+print(compute_cap)
+
+(7.5)
+
+# 7.5 -> https://developer.nvidia.com/cuda-gpus -> 7.5 seems to be ampere/Turing
+# https://en.wikipedia.org/wiki/Ampere_(microarchitecture) -> 64 cores/sm
+core_per_sm = 64
+total_cores = multi_processor * core_per_sm
+print(total_cores)
+
+2560
+\end{lstlisting}
+
+\subsection{Memory count}
+We need to get the \verb|current_context| from the cuda session and get the total memory that of the GPU we got allocated to.
+\begin{lstlisting}
+memory_info = cuda.current_context().get_memory_info()
+total = getattr(memory_info, 'total')
+print(str(total/1024/1024) + "MB")
+
+15095.0625MB
+
+\end{lstlisting}
+That's 15GB VRAM.
+\normalsize
+\end{document}
